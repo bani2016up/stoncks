@@ -1,15 +1,18 @@
 
+from collections.abc import Generator
+from multiprocessing import Pool
+import numpy as np
 from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.termination.default import DefaultMultiObjectiveTermination
 from pymoo.operators.sampling.lhs import LatinHypercubeSampling
 from pymoo.operators.crossover.sbx import SimulatedBinaryCrossover
-from services.optimization import OptimizationProblem, minimize
-
+from services.optimization import OptimizationProblem, minimize, OptimizationResponse
+from pymoo.core.problem import StarmapParallelization
 from api.adapter.schemas import Stoncksable, DateIndexedSeries
 from services.portfolio import Portfolio
 
 
-gens = 1000
+gens = 500
 pop_size = 100
 
 evals = gens * pop_size
@@ -33,23 +36,34 @@ algorithm = NSGA2(
 
 
 
-def time_scaled_optimization(series: DateIndexedSeries, dates: list[str], portfolio: Portfolio) -> dict[str, list[Stoncksable]]:
+
+
+def time_scaled_optimization(series: DateIndexedSeries, dates: list[str], portfolio: Portfolio) -> Generator[OptimizationResponse, None, None]:
     values = {}
     for date in dates:
-        values[date] = optimization(series.series[date], portfolio)
-    return values
+        portfolio.update_stonc_prices(series.series[date])
+        old_stoncs = portfolio.current_portfolio.copy()
+        values[date] = optimization(series.series[date], portfolio.money())
+        portfolio.set_stoncs([])
+        portfolio.balance += portfolio.calculate_stock_prices(old_stoncs)
+        portfolio.set_stoncs(values[date])
+        yield OptimizationResponse(portfolio, date, values[date])
         
-def optimization(pool: list[Stoncksable], portfolio: Portfolio) -> list[Stoncksable]:
-    problem = OptimizationProblem(portfolio.balance, pool)
+def optimization(pool: list[Stoncksable], balance: float) -> list[Stoncksable]:
+    #runner = StarmapParallelization(Pool(24).starmap)
+    problem = OptimizationProblem(balance, pool)
     
     result = minimize(
             problem,
             algorithm,
             termination=termination,
             seed=1,
-            verbose=True,
+            verbose=False,
             save_history=False,
         )
 
-    solution_1 =  [round(x) for x in result.X[0]]
-    return [(pool[i], x) for i, x in enumerate(solution_1) if x > 0]
+    solution_1 =  [round(x) for x in result.X]
+    try:
+        return list(np.concatenate([[pool[i]] * x for i, x in enumerate(solution_1) if x > 0]).flatten())
+    except ValueError:
+        return []

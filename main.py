@@ -1,13 +1,14 @@
-from services import portfolio
+import matplotlib.pyplot
+
 from utils.templates import create_env
-from utils.utils import file_exists_check
 from api.adapter.main import DataCollector
-import os, json
+import os
 import argparse
-import datetime
 from utils.path import input_dir, output_dir
 from typing import NoReturn
-from services.stoncks_assistant import optimization, Portfolio
+from services.stoncks_assistant import time_scaled_optimization, Portfolio
+import matplotlib
+import pandas as pd
 
 
 def env_check() -> None | NoReturn:
@@ -19,6 +20,10 @@ def file_check(file_path: str) -> NoReturn | None:
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File '{file_path}' does not exist.")
 
+
+
+def date_range(start_date: str, end_date: str) -> list[str]:
+    return [d.strftime("%Y-%m-%d") for d in pd.date_range(start=start_date, end=end_date, freq="MS")]
 
 def main(args: argparse.Namespace) -> None:
     if args.api:
@@ -32,8 +37,16 @@ def main(args: argparse.Namespace) -> None:
         with open(f"{input_dir}/{args.file}", "r") as f:
             data = "\n".join(f.readlines())
         dt = DataCollector.loads(data)
-        portfolio = Portfolio(30_000)
-        print(optimization(dt.time_index_series.series["2013-11-01"], portfolio))
+        portfolio = Portfolio(60_000)
+        dates = date_range("2000-01-01", "2024-09-01")
+        solutions = []
+        for solution in time_scaled_optimization(dt.time_index_series, dates, portfolio):
+            solutions.append(solution.portfolio.money())
+            print(solution)
+            
+        matplotlib.pyplot.plot(dates, solutions)
+        matplotlib.pyplot.show()
+        
 
 if __name__ == "__main__":
     

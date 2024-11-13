@@ -8,7 +8,7 @@ type DataStoncksables = dict[str, list[Stoncksable]]
 class Stoncksable(BaseModel):
     name: str
     date: str
-    value: float | None
+    value: float
     stability: float
     
     

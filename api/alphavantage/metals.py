@@ -13,7 +13,7 @@ def request_data(material: str) -> dict:
     return data
 
 
-_materials = ['COPPER', 'ALUMINUM', "WHEAT", "CORN", "COTTON", "SUGAR", "COFFEE"]
+_materials = ['COPPER', 'ALUMINUM', "WHEAT", "CORN", "COTTON", "SUGAR", "COFFEE", "WTI", "BRENT", "NATURAL_GAS"]
 
 def materials() -> Generator[dict, None, None]:
     for material in _materials:
