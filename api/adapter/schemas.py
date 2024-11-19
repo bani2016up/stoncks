@@ -9,14 +9,15 @@ class Stoncksable(BaseModel):
     name: str
     date: str
     value: float
-    stability: float
-    
-    
-    
-    
+    stability: float = 0.0
+
+
+
+
 class Series(BaseModel):
     name: str
     data: List[Stoncksable]
-    
+
+
 class DateIndexedSeries(BaseModel):
     series: DataStoncksables

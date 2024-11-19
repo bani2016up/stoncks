@@ -5,7 +5,7 @@ from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.optimize import minimize
 from pymoo.problems.functional import ElementwiseProblem
 
-
+from utils.cfg import upper_amount_of_stock
 import numpy as np
 import random
 
@@ -25,45 +25,41 @@ class OptimizationProblem(ElementwiseProblem):
     def __init__(
         self, balance: float, pool: list[Stoncksable], **kwargs
     ):
-        
+
         self.pool: list[Stoncksable] = pool
         self.balance: float = balance
 
-        
-    
+
+
         super().__init__(
             n_var=len(pool),
             n_obj=1,
             n_ieq_constr=1,
-            xl=np.concatenate(
-                [[0 for i in range(len(pool))]]
-            ),
-            xu=np.concatenate(
-                [[50 for i in range(len(pool))]]
-            ),
+            xl=np.concatenate([[0 for _ in range(len(pool))]]),
+            xu=np.concatenate([[upper_amount_of_stock for _ in range(len(pool))]]),
             vtype=int,
             **kwargs
         )
 
     def _evaluate(self, x, out, *args, **kwargs):
 
-        revenue = sum([self.pool[index].value * value for index, value in enumerate(x)])
+        revenue = sum(self.pool[index].value * value for index, value in enumerate(x))
         stability = np.mean([self.pool[index].stability * value for index, value in enumerate(x)])
-        
-        #diversity = max(x) - (sum(x)/len(x)) 
-        
+
+        #diversity = max(x) - (sum(x)/len(x))
+
 
         out["F"] = np.array([- stability])
         out["G"] = np.array([revenue - self.balance])
-        
-        
+
+
 class OptimizationResponse:
-    
+
     def __init__(self, portfolio: Portfolio, date: str, _suggestions: list[Stoncksable]):
         self.portfolio: Portfolio = portfolio
         self.date: str = date
         self._suggestions = _suggestions
-        
+
     @property
     def suggestions(self) -> str:
         counts = {}
@@ -72,6 +68,6 @@ class OptimizationResponse:
                 continue
             counts[s.name] = self._suggestions.count(s)
         return ", ".join([f"{k} X{v}" for k, v in counts.items()])
-        
+
     def __repr__(self) -> str:
         return f"Portfolio on {self.date}: {self.portfolio.money()}$. Suggestions: {self.suggestions}"

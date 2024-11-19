@@ -9,20 +9,19 @@ from turtle import pd
 from typing import Any
 from api.alphavantage.metals import materials
 from api.adapter.schemas import Series, DateIndexedSeries
+import numpy as np
 
 class DataCollector(object):
-    
+
     def __init__(self) -> None:
         self.storage = []
-        
+
         self._to_dump: list[str] = ["storage"]
-        
+
     def dumps(self, file: TextIOWrapper) -> None:
-        data = {}
-        for attr in self._to_dump:
-            data[attr] = getattr(self, attr)
+        data = {attr: getattr(self, attr) for attr in self._to_dump}
         json.dump(data, file)
-        
+
     @staticmethod
     def loads(obj: str) -> "DataCollector":
         params: dict = json.loads(obj)
@@ -30,74 +29,61 @@ class DataCollector(object):
         for key, value in params.items():
             setattr(new_instance, key, value)
         return new_instance
-        
+
     @staticmethod
     def parse_value(v):
-        if v != ".":
-            return float(v)
-        else:
-            return None
-    
+        return float(v) if v != "." else None
+
     @staticmethod
     def parse_data(data: dict, additional_fields: dict | None = None) -> dict:
         data["value"] = DataCollector.parse_value(data["value"])
-        
+
         if additional_fields is not None:
-            data.update(additional_fields)
-            
+            data |= additional_fields
+
         return data
-        
+
+
+    def calculate_stability(self, data):
+        prices = [item['value'] for item in data if item['value'] is not None]
+        if len(prices) < 2:
+            return 0  # Not enough data to calculate stability
+
+        price_changes = np.diff(prices) / prices[:-1]
+        stability = np.std(price_changes)
+        return stability
+
 
     def API_source_materials(self) -> None:
         for data in materials():
             parser = partial(self.parse_data, additional_fields = {"name": data["name"]})
+            parsed_data = [i for i in map(parser, data["data"]) if i["value"] is not None][::-1]
+            stability = self.calculate_stability(parsed_data)
             self.storage.append(
-                self.parse_assessment({
+               {
                 "name": data["name"],
-                "data": [i for i in map(parser, data["data"]) if i["value"] is not None][::-1]}
-            ))
-            
+                "data": parsed_data,
+                "stability": stability
+               }
+            )
+
+
     @property
     def _sources(self) -> Generator[str, None, None]:
         for param in DataCollector.__dict__.keys():
             if param.startswith('API_source_'):
                 yield param
-                
-                
+
+
     def request_all_data(self) -> None:
         for source in self._sources:
             getattr(self, source)()
-    
-    @staticmethod
-    def stability_score(storables: list) -> list[float]:
-        stability = [0.0] 
-        time_inflation = [1/(0.99999999+x) for x in range(len(storables))][::-1]
-        for i in range(1, len(storables)):
-        
-            if storables[i] == storables[i - 1]:
-                stability.append(0)
-            else:
-                denom = max(abs(storables[i]), abs(storables[i - 1]))
-                if denom == 0:
-                    stability.append(0)
-                else:
-                    s_i = (storables[i] - storables[i - 1]) / denom
-                    stability.append((s_i * time_inflation[i]) + stability[i-1])
-        return stability
-    
-    @staticmethod
-    def parse_assessment(data: dict) -> dict:
-        stability_score: list[float] = DataCollector.stability_score([value["value"] for value in data["data"]])
-        for index, stonc in enumerate(data["data"]):
-            stonc["stability"] = stability_score[index]
-        return data
-        
-    
+
+
     @property
     def series(self) -> list[Series]:
-        import pdb; pdb.set_trace()
         return [Series.model_validate(i) for i in self.storage]
-        
+
     @property
     def time_index_series(self) -> DateIndexedSeries:
         dates = {}
@@ -105,8 +91,10 @@ class DataCollector(object):
             for item in collection["data"]:
                 date = str(item["date"])
                 if date not in dates:
-                    dates[date] = [item]
-                if item not in dates[date]:
-                    dates[date].append(item)
-                
+                    dates[date] = []
+                item_with_stability = item.copy()
+                item_with_stability["stability"] = collection["stability"]
+                if item_with_stability not in dates[date]:
+                    dates[date].append(item_with_stability)
+
         return DateIndexedSeries(series=dates)

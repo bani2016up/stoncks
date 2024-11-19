@@ -6,9 +6,10 @@ from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.termination.default import DefaultMultiObjectiveTermination
 from pymoo.operators.sampling.lhs import LatinHypercubeSampling
 from pymoo.operators.crossover.sbx import SimulatedBinaryCrossover
+from api.adapter.main import DataCollector
 from services.optimization import OptimizationProblem, minimize, OptimizationResponse
 from pymoo.core.problem import StarmapParallelization
-from api.adapter.schemas import Stoncksable, DateIndexedSeries
+from api.adapter.schemas import Stoncksable, DateIndexedSeries, Series
 from services.portfolio import Portfolio
 
 
@@ -37,9 +38,9 @@ algorithm = NSGA2(
 
 
 
-
-def time_scaled_optimization(series: DateIndexedSeries, dates: list[str], portfolio: Portfolio) -> Generator[OptimizationResponse, None, None]:
+def time_scaled_optimization(pool: DataCollector, dates: list[str], portfolio: Portfolio) -> Generator[OptimizationResponse, None, None]:
     values = {}
+    series = pool.time_index_series
     for date in dates:
         portfolio.update_stonc_prices(series.series[date])
         old_stoncs = portfolio.current_portfolio.copy()
@@ -48,11 +49,11 @@ def time_scaled_optimization(series: DateIndexedSeries, dates: list[str], portfo
         portfolio.balance += portfolio.calculate_stock_prices(old_stoncs)
         portfolio.set_stoncs(values[date])
         yield OptimizationResponse(portfolio, date, values[date])
-        
+
 def optimization(pool: list[Stoncksable], balance: float) -> list[Stoncksable]:
     #runner = StarmapParallelization(Pool(24).starmap)
     problem = OptimizationProblem(balance, pool)
-    
+
     result = minimize(
             problem,
             algorithm,
